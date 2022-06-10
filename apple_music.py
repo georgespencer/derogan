@@ -6,20 +6,20 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 import json
 
-def gimme_dat_json(): # extracts the JSON object saved to text file in spotify.py
-    with open('path/to/your/playlist/as/json.txt') as f:
-        json_data = json.loads(f)
+def gimme_dat_json():
+    with open('app/static/dump.txt') as f:
+        json_data = json.load(f)
     return json_data
 
-def create_session(): # creates a session and points it to the Apple Music auth page
+def create_session():
     driver = webdriver.Chrome(service_args=["--verbose", "--log-path=apple_music_automaton.log"])
     driver.get("https://beta.music.apple.com/includes/commerce/authenticate?product=music")
     return driver
 
-def login_to_apple_music(driver): # signs in to Apple Music and handles 2FA, redirects WebDriver to the main Apple Music page
+def login_to_apple_music(driver):
     WebDriverWait(driver, 20).until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR,"iframe[title^='Sign In with your Apple']")))
     user_name_field = driver.find_element_by_css_selector("input#account_name_text_field")
-    user_name_field.send_keys("your-apple-music-user-name")
+    user_name_field.send_keys("your-apple-music-username")
     time.sleep(5)
     user_name_field.send_keys(Keys.ENTER)
     time.sleep(5)
@@ -43,10 +43,10 @@ def login_to_apple_music(driver): # signs in to Apple Music and handles 2FA, re
     driver.get("https://beta.music.apple.com")
     return driver
 
-def verify_presence_of_playlist(driver): # checks to ensure that there is a playlist to add tracks to
+def verify_presence_of_playlist(driver):
     playlist_name = accept_playlist_name_as_input()
     sidebar = driver.find_element_by_css_selector("div.navigation__scrollable-container")
-    list_of_playlists = sidebar.find_element_by_css_selector("ul[aria-label='Playlists'] > li")
+    list_of_playlists = sidebar.find_elements_by_css_selector("ul[aria-label='Playlists'] > li")
     for list_item in list_of_playlists:
         my_span = list_item.find_element_by_css_selector("span")
         if my_span.text.lower() == playlist_name.lower():
@@ -58,12 +58,12 @@ def verify_presence_of_playlist(driver): # checks to ensure that there is a pla
         return "Playlist not found"
     else:
         return my_message
-    
-def accept_playlist_name_as_input(): # asks user to enter the name of their playlist
+
+def accept_playlist_name_as_input():
     playlist_name = str(input("Enter the name of your Apple Music playlist:\n"))
     return playlist_name
 
-def find_album_listings(driver): # finds the container DIV for albums returned by search
+def find_album_listings(driver):
     main_page = driver.find_element_by_css_selector("main.svelte-xqntb3")
     section_divs = main_page.find_elements_by_css_selector("div[class^='section']")
     for counter, div in enumerate(section_divs):
@@ -78,7 +78,7 @@ def find_album_listings(driver): # finds the container DIV for albums returned 
             pass
     return my_div
 
-def select_best_match(driver, album, album_container): # finds the album which best matches the name from our JSON
+def select_best_match(driver, album, album_container):
     matches = album_container.find_elements_by_css_selector("div.product-lockup__title ")
     album_name = album.lower()
     for counter, match in enumerate(matches):
@@ -96,53 +96,71 @@ def select_best_match(driver, album, album_container): # finds the album which 
                 pass
     return best_match
 
-def identify_song(driver, song): # finds the song which best matches the song name from our JSON
-    elements_containing_songs = driver.find_elements_by_class_name("songs-list-row")
+def identify_song(driver, song):
+    elements_containing_songs = driver.find_elements_by_css_selector("div[data-testid='track-list-item']")
     song_name = song.lower()
     for counter, element in enumerate(elements_containing_songs):
-        attempted_match = element.find_elements_by_class_name("songs-list-row__song-name")
-        if attempted_match.text.lower() == song_name:
-            my_song_row = element[counter]
+        song_title = element.find_element_by_css_selector("div[data-testid='track-title']")
+        if song_title.text.lower() == song_name:
+            my_song_row = elements_containing_songs[counter]
+            break
         else:
             pass
     if my_song_row != None or '':
         return my_song_row
     else:
         for counter, element in enumerate(elements_containing_songs):
-            attempted_match = element.find_elements_by_class_name("songs-list-row__song-name")
-            if song_name in attempted_match.text.lower():
-                my_song_row = element[counter]
+            song_title = element.find_element_by_css_selector("div[data-testid='track-title']")
+            if song_name in song_title.text.lower():
+                my_song_row = elements_containing_songs[counter]
+                break
             else:
                 pass
-    return my_song_row
+        return my_song_row
 
-def click_more_button(driver, song_row): # clicks the contextual menu button
-    button = song_row.find_elemenet_by_css_selector("button.more-button")
+def click_more_button(driver, song_row):
+    button = song_row.find_element_by_css_selector("button.more-button")
     button.click()
     return ("Button clicked")
 
-# def add_song_to_playlist(driver, song, playlist_name):
-#     WebDriverWait(driver,10).until(EC.presence_of_element_located((By.CSS_SELECTOR("ul.contextual-menu__items"))))
-#     add_to_playlist_button = driver.find_elements_by_css_selector("button[title='Add to Playlist']")
-#     add_to_playlist_button.click()
-#     WebDriverWait(driver,20).until(EC.presence_of_element_located((By.CSS_SELECTOR("ul.contextual-menu__items--nested-active"))))
-#     my_specific_playlist_bitton = driver.find_elements_
+def add_song_to_playlist(driver, song, playlist_name):
+    context_menu = WebDriverWait(driver,10).until(EC.presence_of_element_located((By.XPATH("/html/body/amp-contextual-menu"))))
+    add_to_playlist_button = context_menu.find_element_by_css_selector("button[title='Add to Playlist']")
+    add_to_playlist_button.click()
+    WebDriverWait(driver,20).until(EC.presence_of_element_located((By.CSS_SELECTOR("ul.contextual-menu__items--nested-active"))))
+    my_specific_playlist_bitton = driver.find_elements_
 
-# def search_for_albums(driver):
+def search_for_albums(driver):
+    my_playlist = gimme_dat_json()
+    search_input = driver.find_element_by_class_name("search-input__text-field")
+
+    for artist in my_playlist.keys():
+        for album in my_playlist[artist].keys():
+            album_search_string = f'{album} {artist}'
+            print(album_search_string)
+            search_input.send_keys(album_search_string)
+            time.sleep(1)
+            search_input.send_keys(Keys.ENTER)
+            WebDriverWait(driver,20).until(EC.presence_of_element_located((By.CSS_SELECTOR("main.svelte-xqntb3"))))
+            album_container = find_album_listings(driver)
+            match = select_best_match(driver, album, album_container)
+            match.click()
+            for song in my_playlist[artist][album]["Tracks"]:
+                this_song = identify_song(driver, song)
+                click_more_button(driver, this_song)
+
+# Find the album in the search results and click on it
+            # find <h2 class="shelf-title">Albums</h2> and look below it
+            # look for a link like this <a href="https://music.apple.com/gb/album/antics/1589250507" class="line lockup__name has-adjacent-link">
+            # with the title of the album as the link text
+            # for track in my_playlist[artist][album].values():
+                # Find the tracks from the album and add them to library
+                # look for something like this: <div tabindex="-1" role="checkbox" dir="auto" aria-checked="false" class="songs-list-row__song-name">Next Exit</div>
+                # then find: <button id="ember1055" class="web-add-to-library add-to-library add-to-library--not-in-library add-to-library--list-item add-to-library--list-item add-to-library--no-pill" aria-label="Add to library" title="Add to library">
+                # Evaluate matches for accuracy and write them somewhere
+
+# def final_script():
+#     driver = create_session()
+#     logged_in_driver = login_to_apple_music(driver)
 #     my_playlist = gimme_dat_json()
-#     search_input = driver.find_element_by_class_name("search-input__text-field")
-
-#     for artist in my_playlist.keys():
-#         for album in my_playlist[artist].keys():
-#             album_search_string = f'{album} {artist}'
-#             print(album_search_string)
-#             search_input.send_keys(album_search_string)
-#             time.sleep(1)
-#             search_input.send_keys(Keys.ENTER)
-#             WebDriverWait(driver,20).until(EC.presence_of_element_located((By.CSS_SELECTOR("main.svelte-xqntb3"))))
-#             album_container = find_album_listings(driver)
-#             match = select_best_match(driver, album, album_container)
-#             match.click()
-#             for song in my_playlist[artist][album]["Tracks"]:
-#                 this_song = identify_song(driver, song)
-#                 click_more_button(driver, this_song)
+#     search_for_albums(logged_in_driver)
