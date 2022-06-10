@@ -21,7 +21,7 @@ Firstly we drag and drop all the tracks from a Spotify playlist to a plain text 
 4. The tracks will convert to Spotify URLs.
 5. `$ pip install bs4`
 6. `$ pip install selenium`
-7. `brew install chromedriver --cask`
+7. `$ brew install chromedriver --cask`
 
 ## spotify.py
 
