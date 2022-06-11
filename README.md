@@ -12,6 +12,7 @@ Firstly we drag and drop all the tracks from a Spotify playlist to a plain text 
 * BeautifulSoup
 * Selenium
 * Chrome webdriver
+* GetPass4
 
 ## Setup
 
@@ -21,7 +22,8 @@ Firstly we drag and drop all the tracks from a Spotify playlist to a plain text 
 4. The tracks will convert to Spotify URLs.
 5. `$ pip install bs4`
 6. `$ pip install selenium`
-7. `$ brew install chromedriver --cask`
+7. `$ pip install getpass4`
+8. `$ brew install chromedriver --cask`
 
 ## spotify.py
 
@@ -29,3 +31,4 @@ Tell this file where your list of Spotify URLs is stored, and where you want you
 
 ## apple_music.py
 
+In your Python shell enter `from apple_music.py import *`, and then `migrate_songs()`
