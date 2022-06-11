@@ -3,8 +3,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
+from getpass4 import getpass
 import time
 import json
+
+def get_user_credentials():
+    apple_music_email = str(input("Enter the email address associated with your Apple Music account:\n"))
+    apple_music_password = str(getpass("Enter the password associated with your Apple Music account:\n"))
+    return (apple_music_email, apple_music_password)
 
 def gimme_dat_json():
     with open('app/static/dump.txt') as f:
@@ -16,15 +22,15 @@ def create_session():
     driver.get("https://beta.music.apple.com/includes/commerce/authenticate?product=music")
     return driver
 
-def login_to_apple_music(driver):
+def login_to_apple_music(driver, username, password):
     WebDriverWait(driver, 20).until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR,"iframe[title^='Sign In with your Apple']")))
     user_name_field = driver.find_element_by_css_selector("input#account_name_text_field")
-    user_name_field.send_keys("your-apple-music-username")
+    user_name_field.send_keys(username)
     time.sleep(5)
     user_name_field.send_keys(Keys.ENTER)
     time.sleep(5)
     password_field = driver.find_element_by_css_selector("input[type='password']")
-    password_field.send_keys("your-apple-music-password")
+    password_field.send_keys(password)
     time.sleep(5)
     password_field.send_keys(Keys.ENTER)
     time.sleep(5)
@@ -55,9 +61,9 @@ def verify_presence_of_playlist(driver):
         else:
             pass
     if my_message != 'Playlist Found':
-        return "Playlist not found"
+        return (False, playlist_name)
     else:
-        return my_message
+        return (True, playlist_name)
 
 def accept_playlist_name_as_input():
     playlist_name = str(input("Enter the name of your Apple Music playlist:\n"))
@@ -123,44 +129,88 @@ def click_more_button(driver, song_row):
     button.click()
     return ("Button clicked")
 
+def verify_presence_of_context_menu(driver):
+    try:
+        context_menu = WebDriverWait(driver,10).until(EC.presence_of_element_located((By.XPATH, "/html/body/amp-contextual-menu")))
+        return context_menu
+    except Exception as booboo:
+        return booboo
+
+def click_contextual_menu_button(driver, button_title_text):
+    try:
+        context_menu = verify_presence_of_context_menu(driver)
+        shadow_root_object = expand_shadow_element(driver, context_menu)
+        interpolated_string = f"button[title=\'{button_title_text}\']"
+        button = shadow_root_object.find_element(By.CSS(interpolated_string))
+        button.click()
+        return True
+    except Exception as booboo:
+        return booboo
+
 def add_song_to_playlist(driver, song, playlist_name):
-    context_menu = WebDriverWait(driver,10).until(EC.presence_of_element_located((By.XPATH("/html/body/amp-contextual-menu"))))
-    add_to_playlist_button = context_menu.find_element_by_css_selector("button[title='Add to Playlist']")
-    add_to_playlist_button.click()
-    WebDriverWait(driver,20).until(EC.presence_of_element_located((By.CSS_SELECTOR("ul.contextual-menu__items--nested-active"))))
-    my_specific_playlist_bitton = driver.find_elements_
+    try:
+        this_song = identify_song(driver, song)
+        click_more_button(driver, this_song)
+        click_contextual_menu_button(driver, 'Add to Playlist')
+        click_contextual_menu_button(driver, playlist_name)
+        time.sleep(1)
+        return True
+    except Exception as booboo:
+        return booboo
 
-def search_for_albums(driver):
-    my_playlist = gimme_dat_json()
+def search_for_string(driver, search_query):
     search_input = driver.find_element_by_class_name("search-input__text-field")
+    search_input.send_keys(search_query)
+    search_input.send_keys(Keys.ENTER)
+    time.sleep(2)
+    return driver
 
-    for artist in my_playlist.keys():
-        for album in my_playlist[artist].keys():
-            album_search_string = f'{album} {artist}'
-            print(album_search_string)
-            search_input.send_keys(album_search_string)
-            time.sleep(1)
-            search_input.send_keys(Keys.ENTER)
-            WebDriverWait(driver,20).until(EC.presence_of_element_located((By.CSS_SELECTOR("main.svelte-xqntb3"))))
-            album_container = find_album_listings(driver)
-            match = select_best_match(driver, album, album_container)
-            match.click()
-            for song in my_playlist[artist][album]["Tracks"]:
-                this_song = identify_song(driver, song)
-                click_more_button(driver, this_song)
+def load_matching_album(driver, album_name):
+    album_container = find_album_listings(driver)
+    match = select_best_match(driver, album_name, album_container)
+    match.click()
+    return driver
 
-# Find the album in the search results and click on it
-            # find <h2 class="shelf-title">Albums</h2> and look below it
-            # look for a link like this <a href="https://music.apple.com/gb/album/antics/1589250507" class="line lockup__name has-adjacent-link">
-            # with the title of the album as the link text
-            # for track in my_playlist[artist][album].values():
-                # Find the tracks from the album and add them to library
-                # look for something like this: <div tabindex="-1" role="checkbox" dir="auto" aria-checked="false" class="songs-list-row__song-name">Next Exit</div>
-                # then find: <button id="ember1055" class="web-add-to-library add-to-library add-to-library--not-in-library add-to-library--list-item add-to-library--list-item add-to-library--no-pill" aria-label="Add to library" title="Add to library">
-                # Evaluate matches for accuracy and write them somewhere
+def expand_shadow_element(driver, element):
+    shadow_root = driver.execute_script('return arguments[0].shadowRoot', element)
+    return shadow_root
 
-# def final_script():
-#     driver = create_session()
-#     logged_in_driver = login_to_apple_music(driver)
-#     my_playlist = gimme_dat_json()
-#     search_for_albums(logged_in_driver)
+def wait_for_css_selector(driver, element):
+    time.sleep(5)
+    my_element = WebDriverWait(driver,20).until(EC.presence_of_element_located((By.CSS_SELECTOR,element)))
+    return my_element.tag_name
+
+def remove_song_from_json(my_json_playlist, artist, album, song):
+    if len(my_json_playlist[artist][album]["Tracks"]) > 1:
+        my_json_playlist[artist][album]["Tracks"].remove(song)
+        return f'Removed {artist} - {song} from JSON'
+    elif len(my_json_playlist[artist][album]["Tracks"]) == 1:
+        my_json_playlist[artist][album]["Tracks"].remove(song)
+        my_json_playlist[artist][album].remove("Tracks")
+        my_json_playlist[artist].remove(album)
+        my_return_string = f'Removed {artist} - {song} and {album} from JSON'
+        if my_json_playlist[artist].keys() == 0:
+            my_json_playlist.remove(artist)
+            my_return_string = f'Removed {artist}, {song}, and {album} from JSON'
+        else:
+            pass
+        return my_return_string
+
+def migrate_songs():
+    user_credentials = get_user_credentials()
+    driver = create_session()
+    login_to_apple_music(driver, user_credentials[0], user_credentials[1])
+    my_json_playlist = gimme_dat_json()
+    my_apple_music_playlist = verify_presence_of_playlist(driver)
+    if my_apple_music_playlist[0] == False:
+        return f'Error: Playlist {my_apple_music_playlist[1]} not found'
+    else:
+        for artist in my_json_playlist.keys():
+            for album in my_json_playlist[artist].keys():
+                album_search_string = f'{artist} - {album}'
+                search_for_string(driver, album_search_string)
+                wait_for_css_selector(driver, "main.svelte-xqntb3")
+                load_matching_album(driver, album)
+                for song in my_json_playlist[artist][album]["Tracks"]:
+                    add_song_to_playlist(driver, song, my_apple_music_playlist[1])
+                    remove_song_from_json(my_json_playlist, artist, album, song)
