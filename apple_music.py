@@ -1,3 +1,4 @@
+import os
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
@@ -6,11 +7,16 @@ from selenium.webdriver.support import expected_conditions as EC
 from getpass4 import getpass
 import time
 import json
+import difflib
 
 def get_user_credentials():
-    apple_music_email = str(input("Enter the email address associated with your Apple Music account:\n"))
-    apple_music_password = str(getpass("Enter the password associated with your Apple Music account:\n"))
-    return (apple_music_email, apple_music_password)
+    #apple_music_email = str(input("Enter the email address associated with your Apple Music account:\n"))
+    #apple_music_password = str(getpass("Enter the password associated with your Apple Music account:\n"))
+    #playlist_name = accept_playlist_name_as_input()
+    apple_music_email = os.environ.get('APPLE_MUSIC_EMAIL')
+    apple_music_password = os.environ.get('APPLE_MUSIC_PASSWORD')
+    playlist_name = os.environ.get('SPOTIFY_PLAYLIST')
+    return (apple_music_email, apple_music_password, playlist_name)
 
 def gimme_dat_json():
     with open('app/static/dump.txt') as f:
@@ -19,6 +25,8 @@ def gimme_dat_json():
 
 def create_session():
     driver = webdriver.Chrome(service_args=["--verbose", "--log-path=apple_music_automaton.log"])
+    driver.set_window_size(1100,750) # makes a smaller window
+    #driver.set_window_position(1500,0) # moves it to my second screen
     driver.get("https://beta.music.apple.com/includes/commerce/authenticate?product=music")
     return driver
 
@@ -26,17 +34,16 @@ def login_to_apple_music(driver, username, password):
     WebDriverWait(driver, 20).until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR,"iframe[title^='Sign In with your Apple']")))
     user_name_field = driver.find_element_by_css_selector("input#account_name_text_field")
     user_name_field.send_keys(username)
-    time.sleep(5)
+    time.sleep(1)
     user_name_field.send_keys(Keys.ENTER)
-    time.sleep(5)
+    time.sleep(1)
     password_field = driver.find_element_by_css_selector("input[type='password']")
     password_field.send_keys(password)
-    time.sleep(5)
+    time.sleep(1)
     password_field.send_keys(Keys.ENTER)
-    time.sleep(5)
+    twofa = str(input("Enter your 6-digit code\n"))
     WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR,"input#char0")))
     input_field_one, input_field_two, input_field_three, input_field_four, input_field_five, input_field_six = driver.find_element_by_id("char0"), driver.find_element_by_id("char1"), driver.find_element_by_id("char2"), driver.find_element_by_id("char3"), driver.find_element_by_id("char4"), driver.find_element_by_id("char5")
-    twofa = str(input("Enter your 6-digit code\n"))
     input_field_one.send_keys(twofa[0])
     input_field_two.send_keys(twofa[1])
     input_field_three.send_keys(twofa[2])
@@ -47,60 +54,66 @@ def login_to_apple_music(driver, username, password):
     driver.find_element_by_xpath("//button[contains(@id,'trust-browser')]").click()
     time.sleep(10)
     driver.get("https://beta.music.apple.com")
+    time.sleep(5)
     return driver
 
-def verify_presence_of_playlist(driver):
-    playlist_name = accept_playlist_name_as_input()
+def verify_presence_of_playlist(driver, playlist_name):
+    wait_for_css_selector(driver, 'div.navigation__scrollable-container')
     sidebar = driver.find_element_by_css_selector("div.navigation__scrollable-container")
     list_of_playlists = sidebar.find_elements_by_css_selector("ul[aria-label='Playlists'] > li")
     for list_item in list_of_playlists:
         my_span = list_item.find_element_by_css_selector("span")
         if my_span.text.lower() == playlist_name.lower():
-            my_message = 'Playlist Found'
-            break
+            print("Playlist found")
+            return True
         else:
             pass
-    if my_message != 'Playlist Found':
-        return (False, playlist_name)
-    else:
-        return (True, playlist_name)
+    return False
 
 def accept_playlist_name_as_input():
     playlist_name = str(input("Enter the name of your Apple Music playlist:\n"))
     return playlist_name
 
 def find_album_listings(driver):
-    main_page = driver.find_element_by_css_selector("main.svelte-xqntb3")
+    main_page = driver.find_element_by_css_selector("main[data-testid='main']")
     section_divs = main_page.find_elements_by_css_selector("div[class^='section']")
+    print(f'Found {len(section_divs)} section divs')
     for counter, div in enumerate(section_divs):
         try:
             all_h2s = div.find_elements_by_css_selector("h2")
             for heading in all_h2s:
                 if heading.text == 'Albums':
-                    my_div = section_divs[counter]
+                    return section_divs[counter]
                 else:
+                    print(f'Not {heading.text}')
                     pass
-        except:
+        except Exception as booboo:
+            print(f'Error: {booboo}')
             pass
-    return my_div
 
-def select_best_match(driver, album, album_container):
+def scroll_next_page(driver):
+    scroll_button = driver.find_element_by_css_selector("button[aria-label='Next Page']")
+    scroll_button.click()
+
+def evaluate_match(target_name, match_name):
+    return (match_name, difflib.SequenceMatcher(None, target_name, match_name).ratio())
+
+def pick_best_album_match(driver, album, album_container):
     matches = album_container.find_elements_by_css_selector("div.product-lockup__title ")
-    album_name = album.lower()
+    analysed_matches = []
     for counter, match in enumerate(matches):
-        if match.text.lower() == album_name:
-            best_match = matches[counter]
+        this_match = evaluate_match(album, match.text)
+        this_analysed_match = (this_match[0], this_match[1])
+        analysed_matches.append(this_analysed_match)
+    analysed_matches.sort(key=lambda x:x[1], reverse=True)
+    if analysed_matches[0][1] < 0.9:
+        scroll_next_page(driver)
+    for counter, match in enumerate(matches):
+        if match.text == analysed_matches[0][0]:
+            print(f'Found {analysed_matches[0][0]}, {(analysed_matches[0][1])*100}% match for {album}')
+            return matches[counter]
         else:
             pass
-    if best_match != None or '':
-        return best_match
-    else:
-        for counter, match in enumerate(matches):
-            if album_name in match.text.lower():
-                best_match = matches[counter]
-            else:
-                pass
-    return best_match
 
 def identify_song(driver, song):
     elements_containing_songs = driver.find_elements_by_css_selector("div[data-testid='track-list-item']")
@@ -143,15 +156,29 @@ def click_contextual_menu_button(driver, button_title_text):
         interpolated_string = f"button[title=\'{button_title_text}\']"
         button = shadow_root_object.find_element(By.CSS(interpolated_string))
         button.click()
+        print(f"Clicked button for {button_title_text}")
         return True
     except Exception as booboo:
         return booboo
 
+def add_songs_to_playlist(driver, songs, playlist_name): # return
+    elements_containing_songs = driver.find_elements_by_css_selector("div[data-testid='track-list-item']")
+    for song in songs:
+        for counter, element in enumerate(elements_containing_songs):
+            potential_match = element.find_element_by_css_selector("div[data-testid='track-title']")
+
+
+
+
+
 def add_song_to_playlist(driver, song, playlist_name):
     try:
         this_song = identify_song(driver, song)
+        print("Identified song")
         click_more_button(driver, this_song)
+        print("clicked more button")
         click_contextual_menu_button(driver, 'Add to Playlist')
+        print("click contextual menu button")
         click_contextual_menu_button(driver, playlist_name)
         time.sleep(1)
         return True
@@ -160,16 +187,18 @@ def add_song_to_playlist(driver, song, playlist_name):
 
 def search_for_string(driver, search_query):
     search_input = driver.find_element_by_class_name("search-input__text-field")
+    search_input.clear()
     search_input.send_keys(search_query)
+    print(f"Entered {search_query}")
+    time.sleep(2)
     search_input.send_keys(Keys.ENTER)
     time.sleep(2)
     return driver
 
 def load_matching_album(driver, album_name):
     album_container = find_album_listings(driver)
-    match = select_best_match(driver, album_name, album_container)
-    match.click()
-    return driver
+    analysed_matches = pick_best_album_match(driver, album_name, album_container)
+    analysed_matches.click()
 
 def expand_shadow_element(driver, element):
     shadow_root = driver.execute_script('return arguments[0].shadowRoot', element)
@@ -186,8 +215,8 @@ def remove_song_from_json(my_json_playlist, artist, album, song):
         return f'Removed {artist} - {song} from JSON'
     elif len(my_json_playlist[artist][album]["Tracks"]) == 1:
         my_json_playlist[artist][album]["Tracks"].remove(song)
-        my_json_playlist[artist][album].remove("Tracks")
-        my_json_playlist[artist].remove(album)
+        my_json_playlist[artist][album].pop("Tracks")
+        my_json_playlist[artist].pop(album)
         my_return_string = f'Removed {artist} - {song} and {album} from JSON'
         if my_json_playlist[artist].keys() == 0:
             my_json_playlist.remove(artist)
@@ -201,16 +230,22 @@ def migrate_songs():
     driver = create_session()
     login_to_apple_music(driver, user_credentials[0], user_credentials[1])
     my_json_playlist = gimme_dat_json()
-    my_apple_music_playlist = verify_presence_of_playlist(driver)
-    if my_apple_music_playlist[0] == False:
-        return f'Error: Playlist {my_apple_music_playlist[1]} not found'
+    copy_of_json_playlist = my_json_playlist
+    time.sleep(10)
+    my_apple_music_playlist = verify_presence_of_playlist(driver, user_credentials[2])
+    if my_apple_music_playlist == False:
+        return f'Error: Playlist {user_credentials[2]} not found'
     else:
-        for artist in my_json_playlist.keys():
-            for album in my_json_playlist[artist].keys():
+        for artist in list(my_json_playlist.keys()):
+            for album in list(my_json_playlist[artist].keys()):
                 album_search_string = f'{artist} - {album}'
                 search_for_string(driver, album_search_string)
+                print(f"Searched for {album_search_string}")
                 wait_for_css_selector(driver, "main.svelte-xqntb3")
-                load_matching_album(driver, album)
-                for song in my_json_playlist[artist][album]["Tracks"]:
-                    add_song_to_playlist(driver, song, my_apple_music_playlist[1])
-                    remove_song_from_json(my_json_playlist, artist, album, song)
+                print(f"Finished waiting for results to load")
+                this_album = load_matching_album(driver, album)
+                tracks_from_this_album = [ d for d in my_json_playlist[artist][album]["Tracks"] ]
+                print(f"Finding {len(tracks_from_this_album)} tracks")
+                for song in list(my_json_playlist[artist][album]["Tracks"]):
+                    add_song_to_playlist(driver, song, user_credentials[2])
+                    remove_song_from_json(copy_of_json_playlist, artist, album, song)
